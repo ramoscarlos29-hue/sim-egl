@@ -59,4 +59,5 @@ else:
     if st.button("Reiniciar Simulador"):
         st.session_state.indice_pregunta = 0
         st.session_state.puntaje = 0
+
         st.rerun()

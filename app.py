@@ -1,24 +1,21 @@
 import streamlit as st
 import pandas as pd
-import time
 import random
 
-# --- CONFIGURACIÓN DE DISEÑO (FOMENTA CONCENTRACIÓN) ---
-st.set_page_config(page_title="Simulador EGEL Pro", page_icon="🎓", layout="wide")
+# --- DISEÑO ---
+st.set_page_config(page_title="Simulador EGEL", page_icon="🎓", layout="wide")
 
-# Estilo CSS para una interfaz limpia y minimalista
 st.markdown("""
     <style>
-    .main { background-color: #f5f7f9; }
-    .stRadio > label { font-size: 18px; font-weight: bold; color: #1e3d59; }
-    .stButton>button { width: 100%; border-radius: 5px; height: 3em; background-color: #1e3d59; color: white; }
-    .stProgress > div > div > div > div { background-color: #ffc13b; }
+    .main { background-color: #f8f9fa; }
+    .stAlert { border-radius: 10px; }
+    .stButton>button { border-radius: 8px; height: 3em; font-weight: bold; }
     </style>
     """, unsafe_allow_html=True)
 
 URL_DATOS = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRnqEPlutGK3ornINr7D09b3KqdQX__1-AZC6hzMle6tOOEPQeIher3Wgcg9jUxgs_RXXNSAsD1omH-/pub?output=csv"
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=60)
 def cargar_datos():
     try:
         df = pd.read_csv(URL_DATOS)
@@ -27,103 +24,100 @@ def cargar_datos():
     except:
         return None
 
-# --- ESTADO DE LA SESIÓN ---
+# --- ESTADO DE SESIÓN ---
 if 'examen_iniciado' not in st.session_state:
     st.session_state.update({
         'examen_iniciado': False, 'indice': 0, 'puntaje': 0,
-        'nombre': "", 'carrera': "", 'preguntas': None, 'feedback': None
+        'nombre': "", 'carrera': "", 'preguntas': None, 
+        'respondido': False, 'ultimo_resultado': None
     })
 
-# --- PANTALLA DE REGISTRO ---
+# --- REGISTRO ---
 if not st.session_state.examen_iniciado:
-    st.title("🛡️ Centro de Evaluación EGEL")
-    st.subheader("Configura tu sesión de estudio")
+    st.title("🚀 Simulador EGEL")
+    nombre = st.text_input("Nombre completo:")
+    carrera = st.selectbox("Carrera:", ["Gastronomía y Negocios", "Negocios Turísticos"])
     
-    with st.container():
-        nombre = st.text_input("Nombre del Estudiante:", placeholder="Ej. Juan Pérez")
-        carrera = st.selectbox("Selecciona tu Carrera:", 
-                              ["Gastronomía y Negocios", "Negocios Turísticos"])
-        
-        if st.button("Iniciar Evaluación (20 Reactivos)"):
-            if nombre:
-                df_full = cargar_datos()
-                if df_full is not None:
-                    # Filtro por carrera y selección aleatoria de 20
-                    # Asegúrate de tener una columna llamada 'Carrera' en tu Sheets
-                    df_carrera = df_full[df_full['Carrera'] == carrera]
-                    
-                    if len(df_carrera) >= 20:
-                        seleccionadas = df_carrera.sample(20)
-                    else:
-                        seleccionadas = df_carrera.sample(len(df_carrera))
-                    
-                    st.session_state.update({
-                        'nombre': nombre, 'carrera': carrera,
-                        'preguntas': seleccionadas, 'examen_iniciado': True
-                    })
-                    st.rerun()
-            else:
-                st.warning("Por favor, ingresa tu nombre.")
+    if st.button("Empezar Evaluación"):
+        if nombre:
+            df_full = cargar_datos()
+            if df_full is not None:
+                df_carrera = df_full[df_full['Carrera'] == carrera]
+                # Tomamos 20 aleatorias
+                n_total = min(20, len(df_carrera))
+                seleccion = df_carrera.sample(n_total).reset_index(drop=True)
+                
+                st.session_state.update({
+                    'nombre': nombre, 'carrera': carrera,
+                    'preguntas': seleccion, 'examen_iniciado': True,
+                    'indice': 0, 'puntaje': 0
+                })
+                st.rerun()
+        else:
+            st.warning("Escribe tu nombre.")
 
-# --- PANTALLA DE EXAMEN ---
+# --- EXAMEN ---
 else:
     df = st.session_state.preguntas
-    fila = df.iloc[st.session_state.indice]
     
-    # Header de concentración
-    col_a, col_b = st.columns([3, 1])
-    with col_a:
-        st.caption(f"Estudiante: {st.session_state.nombre} | Carrera: {st.session_state.carrera}")
-    with col_b:
-        st.write(f"Pregunta {st.session_state.indice + 1} / {len(df)}")
-    
-    st.progress((st.session_state.indice) / len(df))
-    st.divider()
-
-    # Pregunta y Opciones con Incisos
-    st.markdown(f"### {fila['Pregunta']}")
-    
-    # Diccionario de opciones para mostrar incisos A), B)...
-    dict_opciones = {
-        f"A) {fila['A']}": fila['A'],
-        f"B) {fila['B']}": fila['B'],
-        f"C) {fila['C']}": fila['C'],
-        f"D) {fila['D']}": fila['D']
-    }
-
-    with st.form(key=f"form_{st.session_state.indice}"):
-        seleccion_display = st.radio("Elija la opción correcta:", list(dict_opciones.keys()))
-        btn_validar = st.form_submit_button("Validar Respuesta")
-
-    # Retroalimentación (Feedback)
-    if btn_validar:
-        valor_seleccionado = dict_opciones[seleccion_display]
-        valor_correcto = str(fila['Correcta']).strip()
+    if st.session_state.indice < len(df):
+        fila = df.iloc[st.session_state.indice]
         
-        if str(valor_seleccionado).strip() == valor_correcto:
-            st.success(f"✅ **¡Correcto!** El inciso seleccionado es el adecuado.")
-            st.session_state.puntaje += 1
-        else:
-            st.error(f"❌ **Incorrecto.** La respuesta correcta era: {valor_correcto}")
-        
-        # Mostrar explicación si existe en tu Sheets (columna opcional 'Feedback')
-        if 'Feedback' in fila:
-            st.info(f"💡 **Nota:** {fila['Feedback']}")
-        
-        time.sleep(2.5) # Tiempo para leer el feedback
-        st.session_state.indice += 1
-        st.rerun()
+        st.write(f"Participante: **{st.session_state.nombre}** | **{st.session_state.carrera}**")
+        st.progress((st.session_state.indice) / len(df))
+        st.divider()
 
-    # --- FINALIZACIÓN ---
-    if st.session_state.indice >= len(df):
+        st.markdown(f"#### {fila['Pregunta']}")
+        
+        # Mapeo de incisos
+        opciones_raw = {
+            "A": str(fila['A']).strip(),
+            "B": str(fila['B']).strip(),
+            "C": str(fila['C']).strip(),
+            "D": str(fila['D']).strip()
+        }
+        
+        # Mostramos incisos al usuario
+        lista_display = [f"{k}) {v}" for k, v in opciones_raw.items()]
+        
+        # Formulario de pregunta
+        with st.form(key=f"p_{st.session_state.indice}"):
+            seleccion_web = st.radio("Elija la opción correcta:", lista_display, disabled=st.session_state.respondido)
+            validar = st.form_submit_button("Validar Respuesta")
+
+        # LÓGICA DE VALIDACIÓN (Punto 1 corregido)
+        if validar and not st.session_state.respondido:
+            letra_seleccionada = seleccion_web[0] # Toma solo la "A", "B", "C" o "D"
+            texto_seleccionado = opciones_raw[letra_seleccionada]
+            texto_correcto = str(fila['Correcta']).strip()
+            
+            st.session_state.respondido = True
+            
+            if texto_seleccionado == texto_correcto:
+                st.session_state.ultimo_resultado = "correcto"
+                st.session_state.puntaje += 1
+            else:
+                st.session_state.ultimo_resultado = "incorrecto"
+
+        # MOSTRAR FEEDBACK Y BOTÓN CONTINUAR (Punto 2 corregido)
+        if st.session_state.respondido:
+            if st.session_state.ultimo_resultado == "correcto":
+                st.success(f"✅ **¡Correcto!**")
+            else:
+                st.error(f"❌ **Incorrecto.** La respuesta correcta era la **{fila['Correcta']}**")
+            
+            if 'Feedback' in fila and pd.notna(fila['Feedback']):
+                st.info(f"💡 **Explicación:** {fila['Feedback']}")
+            
+            if st.button("Continuar a la siguiente pregunta ➡️"):
+                st.session_state.indice += 1
+                st.session_state.respondido = False
+                st.rerun()
+
+    else:
         st.balloons()
-        st.header("Evaluación Finalizada")
-        st.metric("Puntaje Final", f"{st.session_state.puntaje} / {len(df)}")
-        
-        # Aquí puedes agregar el código de conexión a Google Sheets (punto 5 anterior)
-        
-        if st.button("Finalizar y Salir"):
+        st.header("🏁 Resultado Final")
+        st.metric("Puntaje", f"{st.session_state.puntaje} / {len(df)}")
+        if st.button("Finalizar"):
             st.session_state.examen_iniciado = False
-            st.session_state.indice = 0
-            st.session_state.puntaje = 0
             st.rerun()

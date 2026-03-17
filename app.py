@@ -105,7 +105,7 @@ else:
         except:
             st.warning("⚠️ Error de conexión. Avisa a tu coordinador.")
 
-        st.image("felino40.jpg", width=200, caption="¡Felicidades por completar el reto!")
+        st.image("felino40.png", width=200, caption="¡Felicidades por completar el reto!")
         
         # Tabla de áreas (como la teníamos)
         # ... 

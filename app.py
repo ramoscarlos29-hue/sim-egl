@@ -4,20 +4,21 @@ import random
 import os
 from streamlit_gsheets import GSheetsConnection
 
-# --- CONFIGURACIÓN Y ESTILO LA SALLE ---
+# --- CONFIGURACIÓN LA SALLE ---
 st.set_page_config(page_title="Simulador EGEL | La Salle Bajío", page_icon="🎓", layout="wide")
 
 st.markdown("""
     <style>
     .main { background-color: #ffffff; }
-    .stButton>button { background-color: #002d72; color: white; border-radius: 8px; width: 100%; font-weight: bold; }
+    .stButton>button { background-color: #002d72; color: white; border-radius: 8px; font-weight: bold; }
     .stProgress > div > div > div > div { background-color: #d4002a; }
     </style>
     """, unsafe_allow_html=True)
 
+# 1. CORRECCIÓN DE IMAGEN (Actualizado a width='stretch')
 def mostrar_imagen(ruta, pie_foto=""):
     if os.path.exists(ruta):
-        st.image(ruta, caption=pie_foto, use_container_width=True)
+        st.image(ruta, caption=pie_foto, width='stretch')
     else:
         st.caption(f"(Imagen '{ruta}' no encontrada)")
 
@@ -111,30 +112,26 @@ else:
         st.balloons()
         st.header(f"🏁 ¡Felicidades, {st.session_state.nombre}!")
         
-        # Lógica de registro mejorada
+        # Lógica de registro blindada contra Error 400
         try:
             conn = st.connection("gsheets", type=GSheetsConnection)
-            
-            # 1. Crear el nuevo registro
-            nuevo_dato = {
-                "Fecha": pd.Timestamp.now().strftime("%d/%m/%Y %H:%M"),
-                "Nombre": st.session_state.nombre,
-                "Correo": st.session_state.correo,
-                "Carrera": st.session_state.carrera,
+            nuevo_dato = pd.DataFrame([{
+                "Fecha": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M"),
+                "Nombre": str(st.session_state.nombre),
+                "Correo": str(st.session_state.correo),
+                "Carrera": str(st.session_state.carrera),
                 "Resultado": f"{st.session_state.puntaje}/{len(df)}"
-            }
+            }])
             
-            # 2. Leer datos actuales (especificando la pestaña)
-            df_existente = conn.read(worksheet="Resultados")
+            # Forzamos la lectura limpia
+            df_existente = conn.read(worksheet="Resultados", usecols=[0,1,2,3,4])
+            df_actualizado = pd.concat([df_existente, nuevo_dato], ignore_index=True)
             
-            # 3. Concatenar y actualizar
-            df_actualizado = pd.concat([df_existente, pd.DataFrame([nuevo_dato])], ignore_index=True)
+            # El update se hace sobre la pestaña específica
             conn.update(worksheet="Resultados", data=df_actualizado)
-            
-            st.success("✅ Tu intento ha sido registrado exitosamente en la base de datos.")
+            st.success("✅ Intento registrado exitosamente.")
         except Exception as e:
             st.error(f"⚠️ Error de registro: {str(e)}")
-            st.info("Asegúrate de que la pestaña se llame 'Resultados' y que la Service Account tenga permiso de Editor.")
 
         st.subheader("📊 Desempeño por Áreas")
         diag = [{"Área": k[0], "Subárea": k[1], "Aciertos": f"{v['a']}/{v['t']}", "Efectividad": f"{(v['a']/v['t'])*100:.1f}%"} for k, v in st.session_state.analitica.items()]

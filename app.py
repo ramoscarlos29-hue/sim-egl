@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import random
+import os
 from streamlit_gsheets import GSheetsConnection
 
 # --- CONFIGURACIÓN Y ESTILO LA SALLE ---
@@ -9,12 +10,17 @@ st.set_page_config(page_title="Simulador EGEL | La Salle Bajío", page_icon="�
 st.markdown("""
     <style>
     .main { background-color: #ffffff; }
-    .stButton>button { background-color: #002d72; color: white; border-radius: 8px; }
+    .stButton>button { background-color: #002d72; color: white; border-radius: 8px; width: 100%; font-weight: bold; }
     .stProgress > div > div > div > div { background-color: #d4002a; }
     </style>
     """, unsafe_allow_html=True)
 
-# URL de tus datos
+def mostrar_imagen(ruta, pie_foto="", ancho=None):
+    if os.path.exists(ruta):
+        st.image(ruta, caption=pie_foto, width=ancho)
+    else:
+        st.caption(f"(Imagen {ruta} no encontrada)")
+
 URL_DATOS = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRnqEPlutGK3ornINr7D09b3KqdQX__1-AZC6hzMle6tOOEPQeIher3Wgcg9jUxgs_RXXNSAsD1omH-/pub?output=csv"
 
 @st.cache_data(ttl=60)
@@ -23,93 +29,160 @@ def cargar_preguntas():
         df = pd.read_csv(URL_DATOS)
         df.columns = [str(c).strip() for c in df.columns]
         return df
-    except: return None
+    except Exception as e:
+        st.error(f"Error al leer el Excel: {e}")
+        return None
 
-# Inicialización de estado
+# --- ESTADO DE LA SESIÓN ---
 if 'examen_iniciado' not in st.session_state:
     st.session_state.update({
         'examen_iniciado': False, 'indice': 0, 'puntaje': 0,
         'nombre': "", 'correo': "", 'carrera': "", 'preguntas': None, 
-        'respondido': False, 'analitica': {}
+        'respondido': False, 'analitica': {}, 'ultimo_resultado': None
     })
 
 # --- PANTALLA DE INICIO ---
 if not st.session_state.examen_iniciado:
-    # Header Institucional
-    st.image("Turismo_Color.png", width=400)
+    mostrar_imagen("Turismo_Color.png", ancho=400)
     st.title("🚀 Simulador de Examen EGEL")
     
     col1, col2 = st.columns([2, 1])
-    
     with col1:
-        st.markdown("### Registro del Estudiante")
         nombre = st.text_input("Nombre completo:")
-        correo = st.text_input("Correo Institucional (@lasallebajio.edu.mx):")
+        correo = st.text_input("Correo Institucional:")
         carrera = st.selectbox("Carrera:", ["Gastronomía y Negocios", "Negocios Turísticos"])
         
         if st.button("Comenzar Evaluación"):
-            # Validación de dominio
-            if nombre and correo.endswith("@lasallebajio.edu.mx"):
+            if nombre and correo.lower().endswith("@lasallebajio.edu.mx"):
                 df_full = cargar_preguntas()
                 if df_full is not None:
                     df_c = df_full[df_full['Carrera'] == carrera].reset_index(drop=True)
                     if len(df_c) > 0:
-                        st.session_state.preguntas = df_c.sample(min(20, len(df_c))).reset_index(drop=True)
-                        st.session_state.update({'nombre': nombre, 'correo': correo, 'carrera': carrera, 'examen_iniciado': True})
+                        n_final = min(20, len(df_c))
+                        st.session_state.preguntas = df_c.sample(n_final).reset_index(drop=True)
+                        st.session_state.nombre = nombre
+                        st.session_state.correo = correo
+                        st.session_state.carrera = carrera
+                        st.session_state.examen_iniciado = True
                         st.rerun()
-            elif not correo.endswith("@lasallebajio.edu.mx"):
-                st.error("❌ Por favor utiliza tu correo institucional de La Salle Bajío.")
-            else:
-                st.warning("⚠️ Completa todos los campos.")
-    
+                    else: st.error("No hay preguntas para esta carrera en el Excel.")
+            elif not correo.lower().endswith("@lasallebajio.edu.mx"):
+                st.error("❌ Usa tu correo de La Salle Bajío.")
+            else: st.warning("⚠️ Completa los campos.")
     with col2:
-        st.image("felino46.png", caption="¡A darle con todo, Felino!")
+        mostrar_imagen("felino46.png", "¡A darle con todo, Felino!")
 
-# --- EXAMEN (LÓGICA SIMILAR) ---
+# --- EXAMEN ---
 else:
     df = st.session_state.preguntas
     if st.session_state.indice < len(df):
         fila = df.iloc[st.session_state.indice]
-        st.image("Turismo_Color.png", width=200)
+        
+        # Extraer datos de la fila actual
+        area = str(fila.get('Area', 'General')).strip()
+        subarea = str(fila.get('Subarea', 'General')).strip()
+        pregunta_texto = fila.get('Pregunta', 'Sin texto de pregunta')
+        correcta_texto = str(fila.get('Correcta', '')).strip()
+
+        mostrar_imagen("Turismo_Color.png", ancho=200)
         st.write(f"Estudiante: **{st.session_state.nombre}**")
         st.progress((st.session_state.indice) / len(df))
+        st.divider()
+
+        st.caption(f"ÁREA: {area} | SUBÁREA: {subarea}")
+        st.markdown(f"#### {pregunta_texto}")
         
-        st.markdown(f"#### {fila['Pregunta']}")
-        # ... (Aquí va el resto del código de preguntas que ya teníamos)
-        # Asegúrate de mantener la lógica de validación que ya funcionaba
+        # 1) CORRECCIÓN DE OPCIONES: Mapeo robusto
+        opc = {
+            "A": str(fila.get('A', '')).strip(),
+            "B": str(fila.get('B', '')).strip(),
+            "C": str(fila.get('C', '')).strip(),
+            "D": str(fila.get('D', '')).strip()
+        }
+        display_opciones = [f"{k}) {v}" for k, v in opc.items() if v != "nan" and v != ""]
         
-        # Simulación de botón continuar para brevedad de este ejemplo
-        if st.button("Siguiente"): # Simplificado para el ejemplo
-            st.session_state.indice += 1
+        with st.form(key=f"quiz_form_{st.session_state.indice}"):
+            sel = st.radio("Selecciona tu respuesta:", display_opciones, disabled=st.session_state.respondido)
+            validar_btn = st.form_submit_button("Validar Respuesta")
+
+        if validar_btn and not st.session_state.respondido:
+            # Extraer solo el texto de la opción elegida (después del ") ")
+            ans_texto = opc[sel[0]] 
+            
+            key = (area, subarea)
+            if key not in st.session_state.analitica: st.session_state.analitica[key] = {'a': 0, 't': 0}
+            st.session_state.analitica[key]['t'] += 1
+            
+            if ans_texto == correcta_texto:
+                st.session_state.analitica[key]['a'] += 1
+                st.session_state.puntaje += 1
+                st.session_state.ultimo_resultado = "OK"
+            else:
+                st.session_state.ultimo_resultado = "ERR"
+            
+            st.session_state.respondido = True
             st.rerun()
 
-    # --- RESULTADOS ---
+        if st.session_state.respondido:
+            if st.session_state.ultimo_resultado == "OK":
+                st.success("✅ ¡Correcto!")
+            else:
+                st.error(f"❌ Incorrecto. La respuesta correcta era: {correcta_texto}")
+            
+            if 'Feedback' in fila and pd.notna(fila['Feedback']):
+                st.info(f"💡 **Explicación:** {fila['Feedback']}")
+            
+            if st.button("Continuar a la siguiente ➡️"):
+                st.session_state.indice += 1
+                st.session_state.respondido = False
+                st.rerun()
+
+    # --- RESULTADOS FINALES (Puntos 2, 3 y 4) ---
     else:
-        st.image("Turismo_Color.png", width=300)
-        st.header("🏁 Evaluación Finalizada")
+        st.balloons()
+        mostrar_imagen("Turismo_Color.png", ancho=300)
+        st.header(f"🏁 ¡Felicidades, {st.session_state.nombre}!")
         
-        # Intento de registro
+        # Registro en Google Sheets (Blindado)
         try:
             conn = st.connection("gsheets", type=GSheetsConnection)
-            registro = pd.DataFrame([{
-                "Fecha": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M"),
+            # Preparamos el registro
+            nuevo_registro = pd.DataFrame([{
+                "Fecha": pd.Timestamp.now().strftime("%d/%m/%Y %H:%M"),
                 "Nombre": st.session_state.nombre,
                 "Correo": st.session_state.correo,
                 "Carrera": st.session_state.carrera,
-                "Resultado": f"{st.session_state.puntaje}/{len(df)}"
+                "Puntaje": f"{st.session_state.puntaje}/{len(df)}"
             }])
-            existentes = conn.read(worksheet="Resultados")
-            nuevo_df = pd.concat([existentes, registro], ignore_index=True)
-            conn.update(worksheet="Resultados", data=nuevo_df)
-            st.success("✅ Tu resultado ha sido registrado en la base de datos de la Facultad.")
-        except:
-            st.warning("⚠️ Error de conexión. Avisa a tu coordinador.")
+            # Leemos actuales y concatenamos
+            df_existente = conn.read(worksheet="Resultados")
+            df_final_hoja = pd.concat([df_existente, nuevo_registro], ignore_index=True)
+            conn.update(worksheet="Resultados", data=df_final_hoja)
+            st.toast("✅ Registro guardado exitosamente.")
+        except Exception as e:
+            st.warning("⚠️ El registro automático falló. Captura pantalla de tus resultados.")
+            # Solo para ti como desarrollador, esto se verá en los logs:
+            print(f"DEBUG Error GSheets: {e}")
 
-        st.image("felino40.png", width=200, caption="¡Felicidades por completar el reto!")
-        
-        # Tabla de áreas (como la teníamos)
-        # ... 
+        # TABLA DE RESULTADOS POR ÁREA
+        st.subheader("📊 Diagnóstico por Áreas de CENEVAL")
+        if st.session_state.analitica:
+            diag_lista = []
+            for k, v in st.session_state.analitica.items():
+                efect = (v['a']/v['t'])*100
+                diag_lista.append({
+                    "Área": k[0], "Subárea": k[1], 
+                    "Resultado": f"{v['a']}/{v['t']}", 
+                    "Efectividad": f"{efect:.1f}%"
+                })
+            st.table(pd.DataFrame(diag_lista))
+        else:
+            st.info("No se generaron datos analíticos.")
 
-        if st.button("Finalizar Sesión"):
+        mostrar_imagen("felino40.png", "¡Orgullo Felino!", ancho=250)
+        if st.button("Reiniciar Simulador"):
             st.session_state.examen_iniciado = False
+            st.session_state.indice = 0
+            st.session_state.puntaje = 0
+            st.session_state.analitica = {}
             st.rerun()

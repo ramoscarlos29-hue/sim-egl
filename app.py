@@ -64,7 +64,7 @@ if not st.session_state.examen_iniciado:
             elif not correo.lower().endswith("@lasallebajio.edu.mx"):
                 st.error("❌ Por favor usa tu correo institucional.")
             else: st.warning("⚠️ Completa los campos.")
-    with col2: mostrar_imagen("felino46.jpg", "¡A darle con todo, Felino!")
+    with col2: mostrar_imagen("felino46.png", "¡A darle con todo, Felino!")
 
 # --- EXAMEN ---
 else:
@@ -140,7 +140,7 @@ else:
         diag = [{"Área": k[0], "Subárea": k[1], "Aciertos": f"{v['a']}/{v['t']}", "Efectividad": f"{(v['a']/v['t'])*100:.1f}%"} for k, v in st.session_state.analitica.items()]
         st.table(pd.DataFrame(diag))
         
-        mostrar_imagen("felino40.jpg", "¡Orgullo Felino!")
+        mostrar_imagen("felino40.png", "¡Orgullo Felino!")
         if st.button("Finalizar"):
             st.session_state.examen_iniciado = False
             st.rerun()

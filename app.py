@@ -63,7 +63,7 @@ if not st.session_state.examen_iniciado:
                 st.warning("⚠️ Completa todos los campos.")
     
     with col2:
-        st.image("felino46.jpg", caption="¡A darle con todo, Felino!")
+        st.image("felino46.png", caption="¡A darle con todo, Felino!")
 
 # --- EXAMEN (LÓGICA SIMILAR) ---
 else:

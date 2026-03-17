@@ -15,11 +15,13 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-def mostrar_imagen(ruta, pie_foto="", ancho=None):
+# CORRECCIÓN DE FUNCIÓN DE IMAGEN: Eliminamos el problema del ancho inválido
+def mostrar_imagen(ruta, pie_foto=""):
+    """Muestra una imagen si existe, adaptándose al ancho del contenedor."""
     if os.path.exists(ruta):
-        st.image(ruta, caption=pie_foto, width=ancho)
+        st.image(ruta, caption=pie_foto, use_container_width=True)
     else:
-        st.caption(f"(Imagen {ruta} no encontrada)")
+        st.caption(f"(Imagen '{ruta}' no encontrada)")
 
 URL_DATOS = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRnqEPlutGK3ornINr7D09b3KqdQX__1-AZC6hzMle6tOOEPQeIher3Wgcg9jUxgs_RXXNSAsD1omH-/pub?output=csv"
 
@@ -29,8 +31,7 @@ def cargar_preguntas():
         df = pd.read_csv(URL_DATOS)
         df.columns = [str(c).strip() for c in df.columns]
         return df
-    except Exception as e:
-        st.error(f"Error al leer el Excel: {e}")
+    except:
         return None
 
 # --- ESTADO DE LA SESIÓN ---
@@ -43,7 +44,10 @@ if 'examen_iniciado' not in st.session_state:
 
 # --- PANTALLA DE INICIO ---
 if not st.session_state.examen_iniciado:
-    mostrar_imagen("Turismo_Color.png", ancho=400)
+    col_logo, _ = st.columns([1, 2])
+    with col_logo:
+        mostrar_imagen("Turismo_Color.png")
+    
     st.title("🚀 Simulador de Examen EGEL")
     
     col1, col2 = st.columns([2, 1])
@@ -65,12 +69,11 @@ if not st.session_state.examen_iniciado:
                         st.session_state.carrera = carrera
                         st.session_state.examen_iniciado = True
                         st.rerun()
-                    else: st.error("No hay preguntas para esta carrera en el Excel.")
             elif not correo.lower().endswith("@lasallebajio.edu.mx"):
-                st.error("❌ Usa tu correo de La Salle Bajío.")
+                st.error("❌ Por favor usa tu correo de La Salle Bajío.")
             else: st.warning("⚠️ Completa los campos.")
     with col2:
-        mostrar_imagen("felino46.png", "¡A darle con todo, Felino!")
+        mostrar_imagen("felino46.jpg", "¡A darle con todo, Felino!")
 
 # --- EXAMEN ---
 else:
@@ -78,13 +81,11 @@ else:
     if st.session_state.indice < len(df):
         fila = df.iloc[st.session_state.indice]
         
-        # Extraer datos de la fila actual
         area = str(fila.get('Area', 'General')).strip()
         subarea = str(fila.get('Subarea', 'General')).strip()
-        pregunta_texto = fila.get('Pregunta', 'Sin texto de pregunta')
+        pregunta_texto = fila.get('Pregunta', 'Cargando...')
         correcta_texto = str(fila.get('Correcta', '')).strip()
 
-        mostrar_imagen("Turismo_Color.png", ancho=200)
         st.write(f"Estudiante: **{st.session_state.nombre}**")
         st.progress((st.session_state.indice) / len(df))
         st.divider()
@@ -92,23 +93,21 @@ else:
         st.caption(f"ÁREA: {area} | SUBÁREA: {subarea}")
         st.markdown(f"#### {pregunta_texto}")
         
-        # 1) CORRECCIÓN DE OPCIONES: Mapeo robusto
+        # Mapeo de opciones
         opc = {
             "A": str(fila.get('A', '')).strip(),
             "B": str(fila.get('B', '')).strip(),
             "C": str(fila.get('C', '')).strip(),
             "D": str(fila.get('D', '')).strip()
         }
-        display_opciones = [f"{k}) {v}" for k, v in opc.items() if v != "nan" and v != ""]
+        display_opciones = [f"{k}) {v}" for k, v in opc.items() if v not in ["nan", "", "None"]]
         
-        with st.form(key=f"quiz_form_{st.session_state.indice}"):
-            sel = st.radio("Selecciona tu respuesta:", display_opciones, disabled=st.session_state.respondido)
+        with st.form(key=f"q_form_{st.session_state.indice}"):
+            sel = st.radio("Respuesta:", display_opciones, disabled=st.session_state.respondido)
             validar_btn = st.form_submit_button("Validar Respuesta")
 
         if validar_btn and not st.session_state.respondido:
-            # Extraer solo el texto de la opción elegida (después del ") ")
             ans_texto = opc[sel[0]] 
-            
             key = (area, subarea)
             if key not in st.session_state.analitica: st.session_state.analitica[key] = {'a': 0, 't': 0}
             st.session_state.analitica[key]['t'] += 1
@@ -124,65 +123,40 @@ else:
             st.rerun()
 
         if st.session_state.respondido:
-            if st.session_state.ultimo_resultado == "OK":
-                st.success("✅ ¡Correcto!")
-            else:
-                st.error(f"❌ Incorrecto. La respuesta correcta era: {correcta_texto}")
+            if st.session_state.ultimo_resultado == "OK": st.success("✅ ¡Correcto!")
+            else: st.error(f"❌ Incorrecto. La respuesta era: {correcta_texto}")
             
-            if 'Feedback' in fila and pd.notna(fila['Feedback']):
-                st.info(f"💡 **Explicación:** {fila['Feedback']}")
-            
-            if st.button("Continuar a la siguiente ➡️"):
+            if st.button("Siguiente Pregunta ➡️"):
                 st.session_state.indice += 1
                 st.session_state.respondido = False
                 st.rerun()
 
-    # --- RESULTADOS FINALES (Puntos 2, 3 y 4) ---
+    # --- RESULTADOS Y REGISTRO ---
     else:
         st.balloons()
-        mostrar_imagen("Turismo_Color.png", ancho=300)
         st.header(f"🏁 ¡Felicidades, {st.session_state.nombre}!")
         
-        # Registro en Google Sheets (Blindado)
         try:
             conn = st.connection("gsheets", type=GSheetsConnection)
-            # Preparamos el registro
-            nuevo_registro = pd.DataFrame([{
+            registro = pd.DataFrame([{
                 "Fecha": pd.Timestamp.now().strftime("%d/%m/%Y %H:%M"),
                 "Nombre": st.session_state.nombre,
                 "Correo": st.session_state.correo,
                 "Carrera": st.session_state.carrera,
                 "Puntaje": f"{st.session_state.puntaje}/{len(df)}"
             }])
-            # Leemos actuales y concatenamos
-            df_existente = conn.read(worksheet="Resultados")
-            df_final_hoja = pd.concat([df_existente, nuevo_registro], ignore_index=True)
-            conn.update(worksheet="Resultados", data=df_final_hoja)
-            st.toast("✅ Registro guardado exitosamente.")
-        except Exception as e:
-            st.warning("⚠️ El registro automático falló. Captura pantalla de tus resultados.")
-            # Solo para ti como desarrollador, esto se verá en los logs:
-            print(f"DEBUG Error GSheets: {e}")
+            existentes = conn.read(worksheet="Resultados")
+            actualizado = pd.concat([existentes, registro], ignore_index=True)
+            conn.update(worksheet="Resultados", data=actualizado)
+            st.success("✅ Intento registrado en la base de datos.")
+        except:
+            st.warning("⚠️ Error de conexión al registrar. Por favor reporta tu puntaje al coordinador.")
 
-        # TABLA DE RESULTADOS POR ÁREA
-        st.subheader("📊 Diagnóstico por Áreas de CENEVAL")
-        if st.session_state.analitica:
-            diag_lista = []
-            for k, v in st.session_state.analitica.items():
-                efect = (v['a']/v['t'])*100
-                diag_lista.append({
-                    "Área": k[0], "Subárea": k[1], 
-                    "Resultado": f"{v['a']}/{v['t']}", 
-                    "Efectividad": f"{efect:.1f}%"
-                })
-            st.table(pd.DataFrame(diag_lista))
-        else:
-            st.info("No se generaron datos analíticos.")
-
-        mostrar_imagen("felino40.png", "¡Orgullo Felino!", ancho=250)
-        if st.button("Reiniciar Simulador"):
+        st.subheader("📊 Resultados por Área/Subárea")
+        diag = [{"Área": k[0], "Subárea": k[1], "Resultado": f"{v['a']}/{v['t']}", "Efectividad": f"{(v['a']/v['t'])*100:.1f}%"} for k, v in st.session_state.analitica.items()]
+        st.table(pd.DataFrame(diag))
+        
+        mostrar_imagen("felino40.jpg", "¡Orgullo Felino!")
+        if st.button("Finalizar"):
             st.session_state.examen_iniciado = False
-            st.session_state.indice = 0
-            st.session_state.puntaje = 0
-            st.session_state.analitica = {}
             st.rerun()

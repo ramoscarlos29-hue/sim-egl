@@ -69,7 +69,7 @@ if not st.session_state.examen_iniciado:
                 st.error("❌ Acceso restringido a comunidad La Salle Bajío.")
             else: st.warning("⚠️ Completa tus datos.")
     with col_img:
-        mostrar_imagen("felino46.jpg", "¡Mucho éxito!")
+        mostrar_imagen("felino46.png", "¡Mucho éxito!")
 
 # --- EXAMEN ---
 else:
@@ -177,7 +177,7 @@ else:
         pdf_output = pdf.output(dest='S').encode('latin-1', 'ignore')
         st.download_button("📥 Descargar Reporte PDF", pdf_output, f"Resultado_{st.session_state.nombre}.pdf", "application/pdf")
 
-        mostrar_imagen("felino40.jpg", "¡Orgullo Felino!")
+        mostrar_imagen("felino40.png", "¡Orgullo Felino!")
         if st.button("Finalizar Sesión"):
             for k in list(st.session_state.keys()): del st.session_state[k]
             st.rerun()

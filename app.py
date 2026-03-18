@@ -133,7 +133,7 @@ else:
                            file_name=f"Resultado_EGEL_{st.session_state.nombre}.pdf", 
                            mime="application/pdf")
 
-        mostrar_image("felino40.jpg", "¡Orgullo Felino!")
+        mostrar_image("felino40.png", "¡Orgullo Felino!")
         if st.button("Reiniciar"):
             for k in list(st.session_state.keys()): del st.session_state[k]
             st.rerun()

@@ -81,7 +81,7 @@ if not st.session_state.examen_iniciado:
                 st.warning("⚠️ Por favor completa todos los campos de registro.")
     
     with col2:
-        mostrar_imagen("felino46.jpg", "¡Mucho éxito, Felino!")
+        mostrar_imagen("felino46.png", "¡Mucho éxito, Felino!")
 
 # --- PANTALLA DE EXAMEN ---
 else:
@@ -188,7 +188,7 @@ else:
                 })
             st.table(pd.DataFrame(resumen))
         
-        mostrar_imagen("felino40.jpg", "¡Orgullo Felino!")
+        mostrar_imagen("felino40.png", "¡Orgullo Felino!")
         
         if st.button("Finalizar y Reiniciar"):
             # Limpiar todo el estado para un nuevo examen

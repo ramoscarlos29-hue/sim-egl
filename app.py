@@ -1,5 +1,5 @@
 # --- GENERACIÓN DE PDF SIN WARNINGS ---
-        from fpdf import FPDF
+        from fpdf import fpdf
         from fpdf.enums import XPos, YPos # Importamos los nuevos controles de posición
 
         pdf = FPDF()

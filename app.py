@@ -6,6 +6,8 @@ from datetime import datetime
 from fpdf import FPDF
 from fpdf.enums import XPos, YPos
 
+# El resto del código que te envié anteriormente...
+
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="Simulador EGEL | La Salle Bajío", page_icon="🎓", layout="wide")
 

@@ -9,146 +9,168 @@ from fpdf.enums import XPos, YPos
 # --- CONFIGURACIÓN ---
 st.set_page_config(page_title="Simulador EGEL | La Salle Bajío", page_icon="🎓", layout="wide")
 
+# Estilos CSS optimizados
 st.markdown("""
     <style>
-    .main { background-color: #ffffff; }
-    .stButton>button { background-color: #002d72; color: white; border-radius: 8px; font-weight: bold; height: 3.5em; width: 100%; }
+    .stButton>button { background-color: #002d72; color: white; border-radius: 8px; font-weight: bold; }
     .stProgress > div > div > div > div { background-color: #d4002a; }
-    .stRadio > label { font-size: 18px !important; font-weight: 500; }
     </style>
     """, unsafe_allow_html=True)
 
-def mostrar_imagen(ruta, pie_foto=""):
-    if os.path.exists(ruta):
-        st.image(ruta, caption=pie_foto, use_container_width=True)
-    else:
-        st.caption(f"(Imagen '{ruta}' no encontrada)")
-
 URL_DATOS = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRnqEPlutGK3ornINr7D09b3KqdQX__1-AZC6hzMle6tOOEPQeIher3Wgcg9jUxgs_RXXNSAsD1omH-/pub?output=csv"
 
-@st.cache_data(ttl=60)
-def cargar_preguntas():
+# --- FUNCIONES DE CARGA OPTIMIZADAS ---
+@st.cache_data(ttl=3600, show_spinner="Cargando base de datos...")
+def cargar_datos_crudos(url):
     try:
-        df = pd.read_csv(URL_DATOS)
+        df = pd.read_csv(url)
         df.columns = [str(c).strip() for c in df.columns]
         return df
-    except:
+    except Exception:
         return None
+
+def generar_pdf(nombre, carrera, puntaje, total, fecha, diag_data):
+    """Genera el PDF solo bajo demanda para ahorrar RAM"""
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("helvetica", 'B', 16)
+    pdf.cell(190, 10, "EVIDENCIA DE EVALUACIÓN EGEL", border=0, new_x=XPos.LMARGIN, new_y=YPos.NEXT, align='C')
+    pdf.set_font("helvetica", '', 10)
+    pdf.cell(190, 8, f"Fecha: {fecha}", border=0, new_x=XPos.LMARGIN, new_y=YPos.NEXT, align='C')
+    pdf.ln(5)
+    
+    pdf.set_font("helvetica", '', 12)
+    def clean(t): return str(t).encode('latin-1', 'replace').decode('latin-1')
+    
+    pdf.cell(190, 8, clean(f"Estudiante: {nombre}"), border=1, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.cell(190, 8, clean(f"Carrera: {carrera}"), border=1, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.cell(190, 8, clean(f"Puntaje Final: {puntaje}/{total}"), border=1, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.ln(5)
+    
+    for r in diag_data:
+        pdf.cell(190, 8, clean(f"{r['Subarea']}: {r['Aciertos']} - {r['Semaforo']}"), border=1, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    
+    return pdf.output()
 
 # --- ESTADO DE LA SESIÓN ---
 if 'examen_iniciado' not in st.session_state:
     st.session_state.update({
         'examen_iniciado': False, 'indice': 0, 'puntaje': 0,
-        'nombre': "", 'correo': "", 'carrera': "", 'preguntas': None, 
+        'nombre': "", 'correo': "", 'carrera': "", 
+        'preguntas_lista': [], # Lista de diccionarios (Ligero)
         'respondido': False, 'analitica': {}, 'opciones_mezcladas': None,
         'res_actual': None, 'fecha_hora': ""
     })
 
 # --- PANTALLA DE INICIO ---
 if not st.session_state.examen_iniciado:
-    col_l, _ = st.columns([1, 2])
-    with col_l: mostrar_imagen("Turismo_Color.png")
-    
     st.title("🚀 Simulador de Examen EGEL")
-    st.info("Bienvenido. Al finalizar, podrás descargar tu reporte PDF como evidencia.")
     
     col_reg, col_img = st.columns([2, 1])
     with col_reg:
-        nombre = st.text_input("Nombre completo del Alumno:")
+        nombre = st.text_input("Nombre completo:")
         correo = st.text_input("Correo Institucional:")
-        carrera = st.selectbox("Carrera a evaluar:", ["Gastronomía y Negocios", "Negocios Turísticos"])
+        carrera = st.selectbox("Carrera:", ["Gastronomía y Negocios", "Negocios Turísticos"])
         
         if st.button("Comenzar Evaluación"):
             if nombre and correo.lower().endswith("@lasallebajio.edu.mx"):
-                df_f = cargar_preguntas()
-                if df_f is not None:
-                    df_c = df_f[df_f['Carrera'] == carrera].reset_index(drop=True)
-                    if len(df_c) > 0:
-                        st.session_state.preguntas = df_c.sample(min(20, len(df_c))).reset_index(drop=True)
+                df_all = cargar_datos_crudos(URL_DATOS)
+                if df_all is not None:
+                    df_c = df_all[df_all['Carrera'] == carrera]
+                    if not df_c.empty:
+                        # Convertimos a lista de diccionarios inmediatamente para liberar el DataFrame de la memoria
+                        muestra = df_c.sample(min(20, len(df_c))).to_dict('records')
                         st.session_state.update({
-                            'nombre': nombre, 'correo': correo, 'carrera': carrera, 
+                            'preguntas_lista': muestra,
+                            'nombre': nombre, 'correo': correo, 'carrera': carrera,
                             'examen_iniciado': True,
                             'fecha_hora': datetime.now().strftime("%d/%m/%Y %H:%M")
                         })
                         st.rerun()
-            else: st.warning("⚠️ Ingresa tus datos institucionales de La Salle Bajío.")
-    with col_img: mostrar_imagen("felino46.png", "¡Mucho éxito!")
+            else:
+                st.warning("⚠️ Usa tu correo @lasallebajio.edu.mx")
+    with col_img:
+        if os.path.exists("felino46.jpg"): st.image("felino46.jpg")
 
+# --- FLUJO DEL EXAMEN ---
 else:
-    df = st.session_state.preguntas
-    if st.session_state.indice < len(df):
-        fila = df.iloc[st.session_state.indice]
+    preguntas = st.session_state.preguntas_lista
+    idx = st.session_state.indice
+
+    if idx < len(preguntas):
+        pregunta_actual = preguntas[idx]
+        
         if not st.session_state.respondido and st.session_state.opciones_mezcladas is None:
-            opts = [str(fila[c]).strip() for c in ['A', 'B', 'C', 'D'] if str(fila[c]) not in ['nan', '', 'None']]
+            opts = [str(pregunta_actual[c]).strip() for c in ['A', 'B', 'C', 'D'] if pregunta_actual.get(c)]
             random.shuffle(opts)
             st.session_state.opciones_mezcladas = opts
 
-        st.write(f"Alumno: **{st.session_state.nombre}** | {st.session_state.indice + 1}/{len(df)}")
-        st.progress(st.session_state.indice / len(df))
+        st.write(f"**{st.session_state.nombre}** | Pregunta {idx + 1} de {len(preguntas)}")
+        st.progress((idx) / len(preguntas))
         
-        area, sub = str(fila.get('Area', 'Gral')), str(fila.get('Subarea', 'Gral'))
-        st.caption(f"EJE: {area} | SUBÁREA: {sub}")
-        st.markdown(f"#### {fila['Pregunta']}")
+        st.caption(f"EJE: {pregunta_actual.get('Area', 'N/A')} | SUBÁREA: {pregunta_actual.get('Subarea', 'N/A')}")
+        st.markdown(f"#### {pregunta_actual['Pregunta']}")
 
-        with st.form(key=f"q_{st.session_state.indice}"):
-            sel = st.radio("Selecciona la respuesta:", st.session_state.opciones_mezcladas, disabled=st.session_state.respondido)
+        with st.form(key=f"form_{idx}"):
+            sel = st.radio("Selecciona:", st.session_state.opciones_mezcladas, disabled=st.session_state.respondido)
             if st.form_submit_button("Validar"):
                 st.session_state.respondido = True
-                if sel == str(fila['Correcta']).strip():
-                    st.session_state.puntaje += 1
-                    res = "OK"
-                else: res = "ERR"
+                correcta = str(pregunta_actual['Correcta']).strip()
                 
+                # Guardar analítica
+                area, sub = pregunta_actual.get('Area', 'Gral'), pregunta_actual.get('Subarea', 'Gral')
                 key = (area, sub)
                 if key not in st.session_state.analitica: st.session_state.analitica[key] = {'a': 0, 't': 0}
                 st.session_state.analitica[key]['t'] += 1
-                if res == "OK": st.session_state.analitica[key]['a'] += 1
-                st.session_state.res_actual = res
+                
+                if sel == correcta:
+                    st.session_state.puntaje += 1
+                    st.session_state.res_actual = "OK"
+                    st.session_state.analitica[key]['a'] += 1
+                else:
+                    st.session_state.res_actual = "ERR"
                 st.rerun()
 
         if st.session_state.respondido:
             if st.session_state.res_actual == "OK": st.success("✅ ¡Correcto!")
-            else: st.error(f"❌ Incorrecto. Era: {fila['Correcta']}")
+            else: st.error(f"❌ Incorrecto. La respuesta era: {pregunta_actual['Correcta']}")
+            
             if st.button("Siguiente ➡️"):
-                st.session_state.indice += 1
-                st.session_state.respondido = False
-                st.session_state.opciones_mezcladas = None
+                st.session_state.update({'indice': idx + 1, 'respondido': False, 'opciones_mezcladas': None})
                 st.rerun()
+
+    # --- RESULTADOS FINALES ---
     else:
-        st.header(f"🏁 Resultados: {st.session_state.nombre}")
-        st.subheader(f"Puntaje: {st.session_state.puntaje} / {len(df)}")
+        st.header("🏁 Evaluación Finalizada")
+        total_p = len(preguntas)
+        st.subheader(f"Puntaje: {st.session_state.puntaje} / {total_p}")
         
         diag_data = []
-        for k, v in st.session_state.analitica.items():
+        for (a, s), v in st.session_state.analitica.items():
             ef = (v['a']/v['t'])*100
-            s = "🟢 Optimo" if ef >= 80 else "🟡 En desarrollo" if ef >= 60 else "🔴 Refuerzo urgente"
-            diag_data.append({"Area": k[0], "Subarea": k[1], "Aciertos": f"{v['a']}/{v['t']}", "Eficacia": ef, "Semaforo": s})
+            semaforo = "🟢 Optimo" if ef >= 80 else "🟡 En desarrollo" if ef >= 60 else "🔴 Refuerzo"
+            diag_data.append({"Area": a, "Subarea": s, "Aciertos": f"{v['a']}/{v['t']}", "Eficacia": ef, "Semaforo": semaforo})
         
         df_res = pd.DataFrame(diag_data)
-        st.bar_chart(df_res.set_index('Subarea')['Eficacia'])
         st.table(df_res[["Area", "Subarea", "Aciertos", "Semaforo"]])
 
-        # PDF Reporte
-        pdf = FPDF()
-        pdf.add_page()
-        pdf.set_font("helvetica", 'B', 16)
-        pdf.cell(190, 10, "EVIDENCIA DE EVALUACION EGEL", border=0, new_x=XPos.LMARGIN, new_y=YPos.NEXT, align='C')
-        pdf.set_font("helvetica", '', 10)
-        pdf.cell(190, 8, f"Fecha: {st.session_state.fecha_hora}", border=0, new_x=XPos.LMARGIN, new_y=YPos.NEXT, align='C')
-        pdf.ln(5)
-        pdf.set_font("helvetica", '', 12)
-        def clean(t): return str(t).encode('latin-1', 'replace').decode('latin-1')
-        pdf.cell(190, 8, clean(f"Estudiante: {st.session_state.nombre}"), border=1, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-        pdf.cell(190, 8, clean(f"Carrera: {st.session_state.carrera}"), border=1, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-        pdf.cell(190, 8, clean(f"Puntaje: {st.session_state.puntaje}/{len(df)}"), border=1, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-        pdf.ln(5)
-        for _, r in df_res.iterrows():
-            pdf.cell(190, 8, clean(f"{r['Subarea']}: {r['Aciertos']} - {r['Semaforo']}"), border=1, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        # Generación de PDF optimizada (Solo ocurre al presionar el botón)
+        reporte_pdf = generar_pdf(
+            st.session_state.nombre, 
+            st.session_state.carrera, 
+            st.session_state.puntaje, 
+            total_p, 
+            st.session_state.fecha_hora,
+            diag_data
+        )
 
-        pdf_bytes = pdf.output()
-        st.download_button("📥 Descargar Reporte PDF", data=bytes(pdf_bytes), file_name=f"EGEL_{st.session_state.nombre}.pdf", mime="application/pdf")
+        st.download_button(
+            label="📥 Descargar Reporte PDF",
+            data=bytes(reporte_pdf),
+            file_name=f"EGEL_{st.session_state.nombre.replace(' ', '_')}.pdf",
+            mime="application/pdf"
+        )
 
-        mostrar_imagen("felino40.png", "¡Orgullo Felino!")
-        if st.button("Finalizar"):
-            for k in list(st.session_state.keys()): del st.session_state[k]
+        if st.button("Reiniciar Simulador"):
+            st.session_state.clear()
             st.rerun()

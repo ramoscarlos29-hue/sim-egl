@@ -1,5 +1,4 @@
-pandas
-streamlit>=1.31.0
-st-gsheets-connection
-gspread
 fpdf2
+pandas
+streamlit
+st-gsheets-connection
